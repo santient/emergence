@@ -65,6 +65,7 @@ def step(arr, fil, mom):
     # print(coeff)
     # coeff = 0
     for i, (f, m) in enumerate(zip(fil, mom)):
+        # print(f.shape, m.shape, "next")
         arr_out = F.conv2d(arr_out, f, padding='same')
         if i < len(fil) - 1:
             arr_out = torch.relu(arr_out)
@@ -100,15 +101,16 @@ if __name__ == '__main__':
     arr = torch.rand(3, 720, 720) * 2 - 1
     # seed = arr
     # arr = F.tanh(arr)
-    n = 3
+    n = 4
     fil = []
     for i in range(n):
-        s = 2 * n + 1
+        s = 2 * i + 1
         f = torch.randn(3, 3, s, s)
         f = f / f.var()
         fil.append(f)
     mom = []
     for i in range(n):
+        s = 2 * i + 1
         m = torch.randn(3, 3, s, s)
         mom.append(m)
     root = tk.Tk()
