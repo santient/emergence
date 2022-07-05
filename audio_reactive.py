@@ -7,8 +7,8 @@ import torch
 from torch.nn import Sequential, Linear, ReLU
 from torch.nn.init import normal_, xavier_normal_
 import torch.nn.functional as F
-import tkinter as tk
-from PIL import Image, ImageTk
+# import tkinter as tk
+from PIL import Image
 import tqdm
 import librosa
 
@@ -108,7 +108,7 @@ def to_img(world):
 dims = (720, 720)
 sizes = (1, 3, 5, 7)
 out_dim = sum(3 + 3 * 3 * size * size for size in sizes)
-out_dir = 'audio_reactive/'
+out_dir = 'out/'
 sr = 22050
 fr = 30
 # visualize = False
