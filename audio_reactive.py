@@ -12,17 +12,17 @@ from PIL import Image, ImageTk
 import tqdm
 import librosa
 
-def circular_pad(arr, pad):
-    padded = F.pad(arr, (pad, pad, pad, pad))
-    padded[..., :pad, pad:-pad] = arr[..., -pad:, :]
-    padded[..., -pad:, pad:-pad] = arr[..., :pad, :]
-    padded[..., pad:-pad, :pad] = arr[..., :, -pad:]
-    padded[..., pad:-pad, -pad:] = arr[..., :, :pad]
-    padded[..., :pad, :pad] = arr[..., -pad:, -pad:]
-    padded[..., :pad, -pad:] = arr[..., -pad:, :pad]
-    padded[..., -pad:, :pad] = arr[..., :pad, -pad:]
-    padded[..., -pad:, -pad:] = arr[..., :pad, :pad]
-    return padded
+# def circular_pad(arr, pad):
+#     padded = F.pad(arr, (pad, pad, pad, pad))
+#     padded[..., :pad, pad:-pad] = arr[..., -pad:, :]
+#     padded[..., -pad:, pad:-pad] = arr[..., :pad, :]
+#     padded[..., pad:-pad, :pad] = arr[..., :, -pad:]
+#     padded[..., pad:-pad, -pad:] = arr[..., :, :pad]
+#     padded[..., :pad, :pad] = arr[..., -pad:, -pad:]
+#     padded[..., :pad, -pad:] = arr[..., -pad:, :pad]
+#     padded[..., -pad:, :pad] = arr[..., :pad, -pad:]
+#     padded[..., -pad:, -pad:] = arr[..., :pad, :pad]
+#     return padded
 
 def get_filters(world, model):
     coords = 5 * torch.stack(torch.meshgrid(torch.linspace(-1, 1, world.size(1)), torch.linspace(-1, 1, world.size(2)), indexing='ij'), dim=-1).cuda()
@@ -58,7 +58,7 @@ def step(world, model, delta, features, global_step):
     world_out = world
     start = 0
     for idx, size in enumerate(sizes):
-        scale = feat[idx]
+        scale = 2 * feat[idx]
         end = start + 3 + 3 * 3 * size * size
         # scale = filters[:, :, start:start + 1]
         # scale = 1
@@ -68,7 +68,7 @@ def step(world, model, delta, features, global_step):
         pad = size // 2
         if pad > 0:
             # padded = circular_pad(world_out, pad)
-            padded = F.pad(world_out, (pad, pad, pad, pad), mode='constant')
+            padded = F.pad(world_out, (pad, pad, pad, pad), mode='reflect')
         else:
             padded = world_out
         unfold = padded.unfold(1, size, 1).unfold(2, size, 1)
