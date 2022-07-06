@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 import hashlib
@@ -11,6 +12,10 @@ import torch.nn.functional as F
 from PIL import Image
 import tqdm
 import librosa
+import subprocess
+import warnings
+
+warnings.filterwarnings('ignore')
 
 # def circular_pad(arr, pad):
 #     padded = F.pad(arr, (pad, pad, pad, pad))
@@ -46,10 +51,13 @@ def create_model(out_dim):
     return model
 
 def audio_features(pcm):
-    mel = librosa.feature.melspectrogram(y=pcm, sr=sr, n_mels=len(sizes), hop_length=sr // fr)
+    hop = sr // fr
+    h, p = librosa.effects.hpss(pcm)
+    ons = librosa.onset.onset_strength(y=p, sr=sr, hop_length=hop)
+    mel = librosa.feature.melspectrogram(y=h, sr=sr, n_mels=len(sizes), hop_length=hop)
     db = librosa.power_to_db(mel, ref=np.max)
-    features = (db + 80) / 80
-    features = features[::-1].transpose(1, 0).copy()
+    features = np.concatenate((ons[np.newaxis, :], (db[::-1] + 80) / 80), axis=0)
+    features = features.transpose(1, 0).copy()
     return torch.from_numpy(features).cuda()
 
 def step(world, model, delta, features, global_step):
@@ -58,7 +66,7 @@ def step(world, model, delta, features, global_step):
     world_out = world
     start = 0
     for idx, size in enumerate(sizes):
-        scale = 2 * feat[idx]
+        scale = feat[0] / 2 + feat[idx + 1] * 2
         end = start + 3 + 3 * 3 * size * size
         # scale = filters[:, :, start:start + 1]
         # scale = 1
@@ -84,12 +92,12 @@ def step(world, model, delta, features, global_step):
         if idx < len(sizes) - 1:
             world_out = torch.relu(world_out)
     world_out = torch.tanh(world_out)
-    if global_step % 1800 == 0:
+    if global_step % interval == 0:
         delta.clear()
         waypoint = create_model(out_dim)
         for p, w in zip(model.parameters(), waypoint.parameters()):
             with torch.no_grad():
-                delta.append((w.data - p.data) / 1800)
+                delta.append((w.data - p.data) / interval)
     for p, d in zip(model.parameters(), delta):
         with torch.no_grad():
             p.data = p.data + d
@@ -112,30 +120,49 @@ out_dir = 'out/'
 sr = 22050
 fr = 30
 # visualize = False
+interval = 1800
+version = "1.0"
+author = "Santiago Benoit"
+title = r"""
+ _________                   _____________  __
+ __  ____/_______________   ____  ____/_  |/ /
+ _  /    _  __ \_  __ \_ | / /_  /_   __    / 
+ / /___  / /_/ /  / / /_ |/ /_  __/   _    |  
+ \____/  \____//_/ /_/_____/ /_/      /_/|_|  
+                                              
+            Neural Audio Visualizer           
+                  Version 1.0                 
+           (c) 2022 Santiago Benoit           
+                                              
+"""
 
 if __name__ == '__main__':
-    if len(sys.argv) == 4:
-        if sys.argv[2] == '-s':
-            seed_str = sys.argv[3]
+    print(title)
+    if len(sys.argv) == 5:
+        if sys.argv[3] == '-s':
+            seed_str = sys.argv[4]
             print("Seed string:", seed_str)
             seed = int(hashlib.md5(seed_str.encode()).hexdigest()[-16:], 16)
-        elif sys.argv[2] == '-i':
-            seed = int(sys.argv[3])
+        elif sys.argv[3] == '-i':
+            seed = int(sys.argv[4])
         else:
             raise ValueError('Invalid arguments.')
         print("Seed integer:", seed)
         torch.manual_seed(seed)
-    elif len(sys.argv) == 2:
+    elif len(sys.argv) == 3:
         seed = torch.seed()
         print("Using random seed:", seed)
     else:
         raise ValueError('Invalid arguments.')
-    audio_path = sys.argv[1]
+    audio_file = sys.argv[1]
+    out_file = sys.argv[2]
     # world = torch.rand(3, dims[0], dims[1]).cuda() * 2 - 1
+    print("Initializing model...")
     world = torch.zeros(3, dims[0], dims[1]).cuda()
     model = create_model(out_dim)
     delta = []
-    pcm, _ = librosa.load(audio_path, sr=sr)
+    print("Analyzing audio...")
+    pcm, _ = librosa.load(audio_file, sr=sr)
     features = audio_features(pcm)
     del pcm
     total_steps = features.size(0)
@@ -180,7 +207,12 @@ if __name__ == '__main__':
     #     root.mainloop()
     #     os.system('xset r on')
     # else:
+    print("Rendering frames...")
+    os.makedirs(out_dir, exist_ok=True)
     for global_step in tqdm.tqdm(range(total_steps)):
         world = step(world, model, delta, features, global_step)
         img = to_img(world)
         img.save(os.path.join(out_dir, f'frame_{global_step:05}.png'))
+    print("Compiling video...")
+    subprocess.run(['ffmpeg', '-framerate', str(fr), '-pix_fmt', 'yuv420p', '-i', os.path.join(out_dir, 'frame_%05d.png'), '-i', audio_file, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-shortest', out_file], check=True)
+    print("Done!")
