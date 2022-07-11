@@ -35,7 +35,7 @@ def get_filters(world, model):
         filters = model(coords)
     # print(filters.var())
     # filters = filters / filters.var(dim=2, keepdim=True)
-    return filters 
+    return filters
 
 def create_model(out_dim):
     model = Sequential(
@@ -124,16 +124,15 @@ interval = 1800
 version = "1.0"
 author = "Santiago Benoit"
 title = r"""
- _________                   _____________  __
- __  ____/_______________   ____  ____/_  |/ /
- _  /    _  __ \_  __ \_ | / /_  /_   __    / 
- / /___  / /_/ /  / / /_ |/ /_  __/   _    |  
- \____/  \____//_/ /_/_____/ /_/      /_/|_|  
-                                              
-            Neural Audio Visualizer           
-                  Version 1.0                 
-           (c) 2022 Santiago Benoit           
-                                              
+_________                   _____________  __
+__  ____/_______________   ____  ____/_  |/ /
+_  /    _  __ \_  __ \_ | / /_  /_   __    / 
+/ /___  / /_/ /  / / /_ |/ /_  __/   _    |  
+\____/  \____//_/ /_/_____/ /_/      /_/|_|  
+                                             
+           Neural Audio Visualizer           
+                 Version 1.0                 
+          (c) 2022 Santiago Benoit           
 """
 
 if __name__ == '__main__':
@@ -156,10 +155,10 @@ if __name__ == '__main__':
         raise ValueError('Invalid arguments.')
     audio_file = sys.argv[1]
     out_file = sys.argv[2]
-    # world = torch.rand(3, dims[0], dims[1]).cuda() * 2 - 1
     print("Initializing model...")
-    world = torch.zeros(3, dims[0], dims[1]).cuda()
     model = create_model(out_dim)
+    # world = torch.rand(3, dims[0], dims[1]).cuda() * 2 - 1
+    world = torch.zeros(3, dims[0], dims[1]).cuda()
     delta = []
     print("Analyzing audio...")
     pcm, _ = librosa.load(audio_file, sr=sr)
