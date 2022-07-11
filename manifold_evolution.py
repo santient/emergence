@@ -29,7 +29,7 @@ def get_filters(world, model):
         filters = model(coords)
     # print(filters.var())
     # filters = filters / filters.var(dim=2, keepdim=True)
-    return filters 
+    return filters
 
 def create_model(out_dim):
     model = Sequential(
@@ -41,27 +41,53 @@ def create_model(out_dim):
         if p.dim() > 1:
             xavier_normal_(p, 2)
         else:
-            normal_(p, 0, 0.2)
+            normal_(p, 0, 0.25)
     return model
 
 def step(world, model, delta, global_step):
     filters = get_filters(world, model)
     world_out = world
     start = 0
+    # for idx, size in enumerate(sizes):
+    #     end = start + 3 * 3 * size * size
+    #     # scale = filters[:, :, start:start + 1]
+    #     # scale = 1
+    #     fil = (filters[:, :, start:end]).view(world.size(1), world.size(2), 3, 3, size, size)
+    #     start = end
+    #     pad = size // 2
+    #     if pad > 0:
+    #         # padded = circular_pad(world_out, pad)
+    #         padded = F.pad(world_out, (pad, pad, pad, pad), mode='constant')
+    #     else:
+    #         padded = world_out
+    #     unfold = padded.unfold(1, size, 1).unfold(2, size, 1)
+    #     world_out = (fil.permute(2, 0, 1, 3, 4, 5) * unfold.unsqueeze(3)).sum(dim=(3, 4, 5))
+    #     # print(world_out.shape)
+    #     # result = torch.empty_like(world_out)
+    #     # for i in range(world_out.size(1)):
+    #     #     for j in range(world_out.size(2)):
+    #     #         # print(i, j)
+    #     #         result[:, i, j] = (fil[i, j].view(3, 3, size * size) @ padded[:, i:i + size, j:j + size].reshape(3, size * size, 1)).sum(dim=(1, 2))
+    #     # world_out = result
+    #     if idx < len(sizes) - 1:
+    #         world_out = torch.relu(world_out)
     for idx, size in enumerate(sizes):
-        end = start + 3 * 3 * size * size
+        end = start + 3 + 3 * 3 * size * size
         # scale = filters[:, :, start:start + 1]
         # scale = 1
-        fil = (filters[:, :, start:end]).view(world.size(1), world.size(2), 3, 3, size, size)
+        bias = filters[:, :, start:start + 3].view(world.size(1), world.size(2), 3)
+        fil = filters[:, :, start + 3:end].view(world.size(1), world.size(2), 3, 3, size, size)
         start = end
         pad = size // 2
         if pad > 0:
             # padded = circular_pad(world_out, pad)
-            padded = F.pad(world_out, (pad, pad, pad, pad), mode='constant')
+            padded = F.pad(world_out, (pad, pad, pad, pad), mode='reflect')
         else:
             padded = world_out
         unfold = padded.unfold(1, size, 1).unfold(2, size, 1)
         world_out = (fil.permute(2, 0, 1, 3, 4, 5) * unfold.unsqueeze(3)).sum(dim=(3, 4, 5))
+        if add_bias:
+            world_out = world_out + bias.permute(2, 0, 1)
         # print(world_out.shape)
         # result = torch.empty_like(world_out)
         # for i in range(world_out.size(1)):
@@ -95,8 +121,9 @@ def to_img(world):
 
 dims = (720, 720)
 sizes = (1, 3, 5, 7)
-out_dim = sum(3 * 3 * size * size for size in sizes)
-visualize = False
+out_dim = sum(3 + 3 * 3 * size * size for size in sizes)
+visualize = True
+add_bias = False
 out_dir = 'out/'
 total_steps = 18000
 
@@ -117,8 +144,9 @@ if __name__ == '__main__':
         print("Using random seed:", seed)
     else:
         raise ValueError('Invalid arguments.')
-    world = torch.rand(3, dims[0], dims[1]).cuda() * 2 - 1
     model = create_model(out_dim)
+    world = torch.rand(3, dims[0], dims[1]).cuda() * 2 - 1
+    # world = torch.zeros(3, dims[0], dims[1]).cuda()
     delta = []
     # filters = get_filters(world, model)
     # coords = 100 * torch.stack(torch.meshgrid(torch.linspace(-1, 1, world.size(1)), torch.linspace(-1, 1, world.size(2)), indexing='ij'), dim=-1).cuda()
@@ -146,7 +174,7 @@ if __name__ == '__main__':
             global root
             global running
             while running:
-                time.sleep(1 / 60)
+                # time.sleep(1 / 60)
                 img = to_img(world)
                 img_tk = ImageTk.PhotoImage(img)
                 canvas.delete("all")
