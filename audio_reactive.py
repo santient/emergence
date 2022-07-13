@@ -4,6 +4,7 @@ import shutil
 import sys
 import hashlib
 import time
+import math
 import numpy as np
 import torch
 from torch.nn import Sequential, Linear, ReLU
@@ -11,6 +12,8 @@ from torch.nn.init import normal_, xavier_normal_
 import torch.nn.functional as F
 # import tkinter as tk
 from PIL import Image
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import tqdm
 import librosa
 import subprocess
@@ -119,6 +122,7 @@ def to_img(world):
     # img = img - img.min()
     # img = img / img.max()
     img = np.round(img).astype("uint8")
+    # return img
     return Image.fromarray(img)
 
 def get_args():
@@ -286,16 +290,30 @@ if __name__ == '__main__':
     #     os.system('xset r on')
     # else:
     print("Rendering frames...")
+    digits = int(math.log10(total_steps)) + 1
+    if args.visualize:
+        dpi = mpl.rcParams['figure.dpi']
+        figsize = (args.video_dims[0] / dpi, args.video_dims[1] / dpi)
+        fig = plt.figure("ConvFX", figsize=figsize)
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.axis('off')
+        imshow = ax.imshow(to_img(world), interpolation='none')
+        # fig.tight_layout()
+        fig.show()
     os.mkdir(args.out_dir)
     for global_step in tqdm.tqdm(range(total_steps)):
         world = step(world, model, delta, features, global_step, args)
         img = to_img(world)
-        img.save(os.path.join(args.out_dir, f'frame_{global_step:05}.png'))
+        if args.visualize:
+            imshow.set_data(img)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+        img.save(os.path.join(args.out_dir, f'frame_{str(global_step).zfill(digits)}.png'))
     print("Compiling video...")
     if args.audio_file is None:
-        cmd = ['ffmpeg', '-framerate', str(args.fr), '-i', os.path.join(args.out_dir, 'frame_%05d.png'), '-c:v', 'libx265', '-x265-params', 'lossless=1', args.out_file]
+        cmd = ['ffmpeg', '-framerate', str(args.fr), '-i', os.path.join(args.out_dir, f'frame_%0{digits}d.png'), '-c:v', 'libx265', '-x265-params', 'lossless=1', args.out_file]
     else:
-        cmd = ['ffmpeg', '-framerate', str(args.fr), '-i', os.path.join(args.out_dir, 'frame_%05d.png'), '-i', args.audio_file, '-map', '0:v', '-map', '1:a',  '-c:v', 'libx265', '-x265-params', 'lossless=1', '-c:a', 'copy', '-shortest', args.out_file]
+        cmd = ['ffmpeg', '-framerate', str(args.fr), '-i', os.path.join(args.out_dir, f'frame_%0{digits}d.png'), '-i', args.audio_file, '-map', '0:v', '-map', '1:a',  '-c:v', 'libx265', '-x265-params', 'lossless=1', '-c:a', 'copy', '-shortest', args.out_file]
     subprocess.run(cmd, check=True)
     if not args.preserve_out_dir:
         print("Cleaning up...")
