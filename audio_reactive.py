@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 import argparse
 import os
 import shutil
@@ -20,6 +21,102 @@ import subprocess
 import warnings
 
 warnings.filterwarnings('ignore')
+
+class Effect(ABC):
+    def __init__(self):
+        self.buffer = None
+    @abstractmethod
+    def apply(self, world):
+        pass
+
+class Identity(Effect):
+    def apply(self, world):
+        return world
+
+class Invert(Effect):
+    def apply(self, world):
+        return -world
+
+class Sobel(Effect):
+    def __init__(self):
+        super().__init__()
+        self.kx = torch.tensor([
+            [1, 0, -1],
+            [2, 0, -2],
+            [1, 0, -1]]).view(1, 1, 1, 3, 3)
+        self.ky = torch.tensor([
+            [1, 2, 1],
+            [0, 0, 0],
+            [-1, -2, -1]]).view(1, 1, 1, 3, 3)
+    def apply(self, world):
+        padded = F.pad((world + 1) / 2, (1, 1, 1, 1), mode='reflect')
+        unfold = padded.unfold(1, 3, 1).unfold(2, 3, 1)
+        gx = (unfold * self.kx.to(unfold.device)).sum(dim=(3, 4))
+        gy = (unfold * self.ky.to(unfold.device)).sum(dim=(3, 4))
+        mag = torch.sqrt(gx.square() + gy.square())
+        return (mag - mag.min()) / mag.max() * 2 - 1
+
+class Grayscale(Effect):
+    def apply(self, world):
+        return world.mean(dim=0, keepdims=True).expand(3, -1, -1)
+
+class Saturate(Effect):
+    def apply(self, world):
+        maxi, _ = world.max(dim=0, keepdims=True)
+        mini, _ = world.min(dim=0, keepdims=True)
+        return (world - mini) / ((maxi + 1) / 2) * 2 - 1
+
+class Desaturate(Effect):
+    def apply(self, world):
+        return world / 2
+
+class SBlur(Effect):
+    def apply(self, world):
+        padded = F.pad(world, (1, 1, 1, 1), mode='reflect')
+        unfold = padded.unfold(1, 3, 1).unfold(2, 3, 1)
+        return unfold.mean(dim=(3, 4))
+
+class MBlur(Effect):
+    def apply(self, world):
+        blur = world
+        if self.buffer is not None:
+            blur = (blur + self.buffer) / 2
+        self.buffer = world
+        return blur
+
+class HMirror(Effect):
+    def apply(self, world):
+        return torch.cat((world[:, :world.size(1) // 2, :], world[:, :world.size(1) // 2, :].flip(1)), dim=1)
+
+class VMirror(Effect):
+    def apply(self, world):
+        return torch.cat((world[:, :, :world.size(2) // 2], world[:, :, :world.size(2) // 2].flip(2)), dim=2)
+
+effects_dict = {
+    "identity": Identity,
+    "invert": Invert,
+    "sobel": Sobel,
+    "grayscale": Grayscale,
+    "saturate": Saturate,
+    "desaturate": Desaturate,
+    "sblur": SBlur,
+    "mblur": MBlur,
+    "hmirror": HMirror,
+    "vmirror": VMirror,
+}
+
+def init_effects(effect_keys):
+    effects = []
+    for effect_key in effect_keys:
+        effect = effects_dict[effect_key]()
+        effects.append(effect)
+    return effects
+
+def apply_effects(world, effects):
+    fx = world
+    for effect in effects:
+        fx = effect.apply(fx)
+    return fx
 
 # def circular_pad(arr, pad):
 #     padded = F.pad(arr, (pad, pad, pad, pad))
@@ -151,9 +248,8 @@ def get_args():
         help='audio reactive sensitivity')
     parser.add_argument('--interval', type=int, default=1800,
         help='evolution interval for model weights (0 for no evolution)')
-    # TODO implement effects
-    # parser.add_argument('--effects', type=str, nargs='*', default=[],
-        # help='add effects to output video: invert, gradient, grayscale, blur, hmirror, vmirror')
+    parser.add_argument('--effects', type=str, nargs='*', default=[],
+        help='add effects to output video: identity, invert, sobel, grayscale, saturate, desaturate, sblur, mblur, hmirror, vmirror')
     parser.add_argument('--device', type=str,
         help='device used for heavy computations, e.g. cpu or cuda')
     parser.add_argument('--visualize', action='store_true',
@@ -180,7 +276,7 @@ _  /    _  __ \_  __ \_ | / /_  /_   __    /
 / /___  / /_/ /  / / /_ |/ /_  __/   _    |  
 \____/  \____//_/ /_/_____/ /_/      /_/|_|  
                                              
-           Neural Audio Visualizer           
+       Convolutional Audio Visualizer        
                  Version 1.0                 
           (c) 2022 Santiago Benoit           
 """
@@ -235,6 +331,7 @@ if __name__ == '__main__':
     else:
         world = torch.zeros(3, args.video_dims[0], args.video_dims[1]).to(device)
     delta = []
+    effects = init_effects(args.effects)
     if args.audio_file is None:
         print("No audio file specified. Using silent mode.")
         if args.video_length is None:
@@ -303,7 +400,8 @@ if __name__ == '__main__':
     os.mkdir(args.out_dir)
     for global_step in tqdm.tqdm(range(total_steps)):
         world = step(world, model, delta, features, global_step, args)
-        img = to_img(world)
+        fx = apply_effects(world, effects)
+        img = to_img(fx)
         if args.visualize:
             imshow.set_data(img)
             fig.canvas.draw()
