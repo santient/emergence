@@ -221,6 +221,10 @@ def to_img(world):
     # return img
     return Image.fromarray(img)
 
+def abort():
+    print("Aborted.")
+    exit()
+
 class ArgumentParserWithDefaults(argparse.ArgumentParser):
     def add_argument(self, *args, help=None, default=None, **kwargs):
         if help is not None:
@@ -410,6 +414,15 @@ if __name__ == '__main__':
     #     os.system('xset r on')
     # else:
     print("Rendering frames...")
+    if os.path.isdir(args.out_dir):
+        yn = input(f"Directory {args.out_dir} exists. Overwrite? (y/n) ")
+        if yn.lower() == 'y':
+            shutil.rmtree(args.out_dir)
+            os.mkdir(args.out_dir)
+        else:
+            abort()
+    else:
+        os.mkdir(args.out_dir)
     digits = int(math.log10(total_steps)) + 1
     if args.preview:
         dpi = mpl.rcParams['figure.dpi']
@@ -420,7 +433,6 @@ if __name__ == '__main__':
         imshow = ax.imshow(to_img(world), interpolation='none')
         # fig.tight_layout()
         fig.show()
-    os.mkdir(args.out_dir)
     for global_step in tqdm.tqdm(range(total_steps)):
         world = step(world, model, delta, features, global_step, args)
         fx = apply_effects(world, effects)
@@ -440,3 +452,4 @@ if __name__ == '__main__':
         print("Cleaning up...")
         shutil.rmtree(args.out_dir)
     print("Done!")
+    exit()
