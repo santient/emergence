@@ -105,9 +105,10 @@ effects_dict = {
 
 def init_effects(effect_keys):
     effects = []
-    for effect_key in effect_keys:
-        effect = effects_dict[effect_key]()
-        effects.append(effect)
+    if effect_keys is not None:
+        for effect_key in effect_keys:
+            effect = effects_dict[effect_key]()
+            effects.append(effect)
     return effects
 
 def apply_effects(world, effects):
@@ -220,38 +221,49 @@ def to_img(world):
     # return img
     return Image.fromarray(img)
 
+class ArgumentParserWithDefaults(argparse.ArgumentParser):
+    def add_argument(self, *args, help=None, default=None, **kwargs):
+        if help is not None:
+            kwargs['help'] = help
+        if default is not None and args[0] != '-h':
+            kwargs['default'] = default
+            if help is not None:
+                kwargs['help'] += f' [default: {default}]'
+        super().add_argument(*args, **kwargs)
+
 def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--out_file', type=str, required=True,
+    parser = ArgumentParserWithDefaults(
+        formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=30))
+    parser.add_argument('--out_file', type=str, required=True, metavar='F',
         help='output video file path')
-    parser.add_argument('--audio_file', type=str,
+    parser.add_argument('--audio_file', type=str, metavar='F',
         help='input audio file path')
-    parser.add_argument('--out_dir', type=str, default='out',
+    parser.add_argument('--out_dir', type=str, default='./out', metavar='D',
         help='output directory for video frames')
-    parser.add_argument('--seed_str', type=str,
+    parser.add_argument('--seed_str', type=str, metavar='S',
         help='seed string (hashed into 64-bit integer)')
-    parser.add_argument('--seed_int', type=int,
+    parser.add_argument('--seed_int', type=int, metavar='I',
         help='64-bit seed integer')
-    parser.add_argument('--video_dims', type=int, nargs=2, default=(720, 720),
+    parser.add_argument('--video_dims', type=int, nargs=2, default=(720, 720), metavar=('W', 'H'),
         help='output video dimensions')
-    parser.add_argument('--video_length', type=int,
+    parser.add_argument('--video_length', type=int, metavar='L',
         help='manually specify video length in frames')
-    parser.add_argument('--filter_sizes', type=int, nargs='+', default=[1, 3, 5, 7],
+    parser.add_argument('--filter_sizes', type=int, nargs='+', default=(1, 3, 5, 7), metavar='S',
         help='convolutional filter sizes')
     parser.add_argument('--fr', type=int, default=30,
         help='video frame rate')
     parser.add_argument('--sr', type=int, default=22050,
         help='audio sample rate')
-    parser.add_argument('--sensitivity', type=float, default=1.0,
+    parser.add_argument('--sensitivity', type=float, default=1.0, metavar='S',
         help='audio reactive sensitivity')
-    parser.add_argument('--interval', type=int, default=1800,
+    parser.add_argument('--interval', type=int, default=1800, metavar='I',
         help='evolution interval for model weights (0 for no evolution)')
-    parser.add_argument('--effects', type=str, nargs='*', default=[],
-        help='add effects to output video: identity, invert, sobel, grayscale, saturate, desaturate, sblur, mblur, hmirror, vmirror')
-    parser.add_argument('--device', type=str,
+    parser.add_argument('--effects', type=str, nargs='*', metavar='E',
+        help=effects_help)
+    parser.add_argument('--device', type=str, metavar='D', default='auto',
         help='device used for heavy computations, e.g. cpu or cuda')
-    parser.add_argument('--visualize', action='store_true',
-        help='visualize video while rendering')
+    parser.add_argument('--preview', action='store_true',
+        help='preview video while rendering')
     parser.add_argument('--preserve_out_dir', action='store_true',
         help='preserve output directory after compiling video')
     return parser.parse_args()
@@ -278,6 +290,17 @@ _  /    _  __ \_  __ \_ | / /_  /_   __    /
                  Version 1.0                 
           (c) 2022 Santiago Benoit           
 """
+effects_help = """add effects to output video
+    identity: no effect
+    invert: invert colors
+    sobel: apply Sobel filter for edge emphasis
+    grayscale: convert colors to grayscale
+    saturate: increase saturation
+    desaturate: decrease saturation
+    sblur: apply spacial blur
+    mblur: apply motion blur
+    hmirror: mirror horizontally
+    vmirror: mirror vertically"""
 
 if __name__ == '__main__':
     warnings.filterwarnings('ignore')
@@ -316,7 +339,7 @@ if __name__ == '__main__':
         seed = torch.seed()
     print("Random seed:", seed)
     print("Initializing model...")
-    if args.device is None:
+    if args.device == 'auto':
         if torch.cuda.is_available():
             device = torch.device('cuda')
         else:
@@ -388,7 +411,7 @@ if __name__ == '__main__':
     # else:
     print("Rendering frames...")
     digits = int(math.log10(total_steps)) + 1
-    if args.visualize:
+    if args.preview:
         dpi = mpl.rcParams['figure.dpi']
         figsize = (args.video_dims[0] / dpi, args.video_dims[1] / dpi)
         fig = plt.figure("ConvFX", figsize=figsize)
@@ -402,7 +425,7 @@ if __name__ == '__main__':
         world = step(world, model, delta, features, global_step, args)
         fx = apply_effects(world, effects)
         img = to_img(fx)
-        if args.visualize:
+        if args.preview:
             imshow.set_data(img)
             fig.canvas.draw()
             fig.canvas.flush_events()
