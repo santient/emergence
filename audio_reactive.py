@@ -20,8 +20,6 @@ import librosa
 import subprocess
 import warnings
 
-warnings.filterwarnings('ignore')
-
 class Effect(ABC):
     def __init__(self):
         self.buffer = None
@@ -86,11 +84,11 @@ class MBlur(Effect):
 
 class HMirror(Effect):
     def apply(self, world):
-        return torch.cat((world[:, :world.size(1) // 2, :], world[:, :world.size(1) // 2, :].flip(1)), dim=1)
+        return torch.cat((world[:, :, :world.size(2) // 2], world[:, :, :world.size(2) // 2].flip(2)), dim=2)
 
 class VMirror(Effect):
     def apply(self, world):
-        return torch.cat((world[:, :, :world.size(2) // 2], world[:, :, :world.size(2) // 2].flip(2)), dim=2)
+        return torch.cat((world[:, :world.size(1) // 2, :], world[:, :world.size(1) // 2, :].flip(1)), dim=1)
 
 effects_dict = {
     "identity": Identity,
@@ -160,7 +158,7 @@ def audio_features(pcm, args):
     mel = librosa.feature.melspectrogram(y=h, sr=args.sr, n_mels=len(args.filter_sizes), hop_length=hop)
     db = librosa.power_to_db(mel, ref=np.max)
     features = np.concatenate((ons[np.newaxis, :], (db[::-1] + 80) / 80), axis=0)
-    features = np.concatenate((np.zeros((features.shape[0], 1)), features), axis=1)
+    # features = np.concatenate((np.zeros((features.shape[0], 1)), features), axis=1)
     features = features.transpose(1, 0).copy()
     return torch.from_numpy(features)
 
@@ -282,6 +280,8 @@ _  /    _  __ \_  __ \_ | / /_  /_   __    /
 """
 
 if __name__ == '__main__':
+    warnings.filterwarnings('ignore')
+    mpl.use('tkagg')
     print(title)
     args = get_args()
     # if len(sys.argv) == 5:
@@ -327,9 +327,9 @@ if __name__ == '__main__':
     out_dim = sum(3 + 3 * 3 * size * size for size in args.filter_sizes)
     model = create_model(out_dim, device)
     if args.audio_file is None:
-        world = torch.rand(3, args.video_dims[0], args.video_dims[1]).to(device) * 2 - 1
+        world = torch.rand(3, args.video_dims[1], args.video_dims[0]).to(device) * 2 - 1
     else:
-        world = torch.zeros(3, args.video_dims[0], args.video_dims[1]).to(device)
+        world = torch.zeros(3, args.video_dims[1], args.video_dims[0]).to(device)
     delta = []
     effects = init_effects(args.effects)
     if args.audio_file is None:
