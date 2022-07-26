@@ -54,14 +54,21 @@ class Sobel(Effect):
         mag = torch.sqrt(gx.square() + gy.square())
         return (mag - mag.min()) / mag.max() * 2 - 1
 
+class Glow(Effect):
+    def __init__(self):
+        super().__init__()
+        self.sobel = Sobel()
+    def apply(self, world):
+        return 0.2 * world + 0.8 * self.sobel.apply(world)
+
 class Grayscale(Effect):
     def apply(self, world):
-        return world.mean(dim=0, keepdims=True).expand(3, -1, -1)
+        return world.mean(dim=0, keepdim=True).expand(3, -1, -1)
 
 class Saturate(Effect):
     def apply(self, world):
-        maxi, _ = world.max(dim=0, keepdims=True)
-        mini, _ = world.min(dim=0, keepdims=True)
+        maxi, _ = world.max(dim=0, keepdim=True)
+        mini, _ = world.min(dim=0, keepdim=True)
         return (world - mini) / ((maxi + 1) / 2) * 2 - 1
 
 class Desaturate(Effect):
@@ -94,6 +101,7 @@ effects_dict = {
     "identity": Identity,
     "invert": Invert,
     "sobel": Sobel,
+    "glow": Glow,
     "grayscale": Grayscale,
     "saturate": Saturate,
     "desaturate": Desaturate,
@@ -163,6 +171,10 @@ def audio_features(pcm, args):
     features = features.transpose(1, 0).copy()
     return torch.from_numpy(features)
 
+def rgb_relu(world):
+    mask = world.sum(dim=0, keepdim=True) > 0
+    return world * mask
+
 def step(world, model, delta, features, global_step, args):
     filters = get_filters(world, model)
     world_out = world
@@ -172,12 +184,14 @@ def step(world, model, delta, features, global_step, args):
             scale = args.sensitivity * (features[global_step, 0] / 2 + features[global_step, idx + 1] * 2)
         else:
             scale = 1
-        end = start + 3 + 3 * 3 * size * size
+        end = start + 3 * 3 * size * size + 12
         # scale = filters[:, :, start:start + 1]
         # scale = 1
+        fil = scale * filters[:, :, start:end - 12].view(world.size(1), world.size(2), 3, 3, size, size)
         if features is not None:
-            bias = filters[:, :, start:start + 3].view(world.size(1), world.size(2), 3)
-        fil = scale * filters[:, :, start + 3:end].view(world.size(1), world.size(2), 3, 3, size, size)
+            bias = filters[:, :, end - 12:end - 9].view(world.size(1), world.size(2), 3)
+            lin = scale * filters[:, :, end - 9:end].view(world.size(1), world.size(2), 3, 3)
+            # bias2 = filters[:, :, end - 3:end].view(world.size(1), world.size(2), 3)
         start = end
         pad = size // 2
         if pad > 0:
@@ -189,6 +203,9 @@ def step(world, model, delta, features, global_step, args):
         world_out = (fil.permute(2, 0, 1, 3, 4, 5) * unfold.unsqueeze(3)).sum(dim=(3, 4, 5))
         if features is not None:
             world_out = world_out + bias.permute(2, 0, 1)
+            world_out = torch.relu(world_out)
+            world_out = world_out + (lin.permute(2, 0, 1, 3) * world_out.unsqueeze(3)).sum(dim=3)
+            # world_out = world_out + bias2.permute(2, 0, 1)
         # print(world_out.shape)
         # result = torch.empty_like(world_out)
         # for i in range(world_out.size(1)):
@@ -197,7 +214,7 @@ def step(world, model, delta, features, global_step, args):
         #         result[:, i, j] = (fil[i, j].view(3, 3, size * size) @ padded[:, i:i + size, j:j + size].reshape(3, size * size, 1)).sum(dim=(1, 2))
         # world_out = result
         if idx < len(args.filter_sizes) - 1:
-            world_out = torch.relu(world_out)
+            world_out = rgb_relu(world_out)
     world_out = torch.tanh(world_out)
     if args.interval > 0 and global_step % args.interval == 0:
         delta.clear()
@@ -252,7 +269,7 @@ def get_args():
         help='output video dimensions')
     parser.add_argument('--video_length', type=int, metavar='L',
         help='manually specify video length in frames')
-    parser.add_argument('--filter_sizes', type=int, nargs='+', default=(1, 3, 5, 7), metavar='S',
+    parser.add_argument('--filter_sizes', type=int, nargs='+', default=(3, 5, 7), metavar='S',
         help='convolutional filter sizes')
     parser.add_argument('--fr', type=int, default=30,
         help='video frame rate')
@@ -298,6 +315,7 @@ effects_help = """add effects to output video
     identity: no effect
     invert: invert colors
     sobel: apply Sobel filter for edge emphasis
+    glow: glow effect using Sobel filter
     grayscale: convert colors to grayscale
     saturate: increase saturation
     desaturate: decrease saturation
@@ -351,7 +369,7 @@ if __name__ == '__main__':
     else:
         device = torch.device(args.device)
     print("Using device", device.type)
-    out_dim = sum(3 + 3 * 3 * size * size for size in args.filter_sizes)
+    out_dim = sum(3 * 3 * size * size + 12 for size in args.filter_sizes)
     model = create_model(out_dim, device)
     if args.audio_file is None:
         world = torch.rand(3, args.video_dims[1], args.video_dims[0]).to(device) * 2 - 1
