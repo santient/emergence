@@ -52,14 +52,16 @@ class Sobel(Effect):
         gx = (unfold * self.kx.to(unfold.device)).sum(dim=(3, 4))
         gy = (unfold * self.ky.to(unfold.device)).sum(dim=(3, 4))
         mag = torch.sqrt(gx.square() + gy.square())
-        return (mag - mag.min()) / mag.max() * 2 - 1
+        # maxi = 2 * math.sqrt(20)
+        quant = torch.quantile(mag, 0.99)
+        return torch.clamp(mag / quant, 0, 1) * 2 - 1
 
 class Glow(Effect):
     def __init__(self):
         super().__init__()
         self.sobel = Sobel()
     def apply(self, world):
-        return 0.2 * world + 0.8 * self.sobel.apply(world)
+        return 0.3 * world + 0.7 * self.sobel.apply(world)
 
 class Grayscale(Effect):
     def apply(self, world):
