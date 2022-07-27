@@ -214,11 +214,11 @@ def to_img(world):
 
 def abort():
     print("Aborted.")
-    exit()
+    sys.exit(0)
 
 def finish():
     print("Done!")
-    exit()
+    sys.exit(0)
 
 def get_device(name):
     if name == "auto":
@@ -305,7 +305,7 @@ effects_help = """add effects to output video
     hmirror: mirror horizontally
     vmirror: mirror vertically"""
 
-if __name__ == "__main__":
+def main():
     warnings.filterwarnings("ignore")
     mpl.use("tkagg")
     torch.set_grad_enabled(False)
@@ -386,3 +386,9 @@ if __name__ == "__main__":
         print("Cleaning up...")
         shutil.rmtree(args.out_dir)
     finish()
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        abort()
