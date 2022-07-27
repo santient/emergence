@@ -1,9 +1,10 @@
 ![supernova](https://user-images.githubusercontent.com/19509047/181189186-518d4d18-3bdb-4b9f-94fe-96cfc9b6d5ef.png)
 # Supernova: Convolutional Audio Visualizer
 ```
-usage: supernova.py [-h] --out_file F [--audio_file F] [--out_dir D] [--seed_str S] [--seed_int I] [--video_dims W H]
-                    [--video_length L] [--filter_sizes S [S ...]] [--fr FR] [--sr SR] [--sensitivity S] [--interval I]
-                    [--effects [E [E ...]]] [--device D] [--rand_init] [--preview] [--preserve_out_dir]
+usage: supernova.py [-h] --out_file F [--audio_file F] [--out_dir D] [--seed_str S] [--seed_int I]
+                    [--video_dims W H] [--video_length L] [--filter_sizes S [S ...]] [--fr FR]
+                    [--sr SR] [--sensitivity S] [--interval I] [--effects [E [E ...]]] [--device D]
+                    [--rand_init] [--preview] [--preserve_out_dir]
 
 optional arguments:
   -h, --help                show this help message and exit
