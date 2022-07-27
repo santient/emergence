@@ -328,25 +328,24 @@ def get_args():
 version = "1.0"
 author = "Santiago Benoit"
 title = r"""
-_________                   _____________  __
-__  ____/_______________   ____  ____/_  |/ /
-_  /    _  __ \_  __ \_ | / /_  /_   __    / 
-/ /___  / /_/ /  / / /_ |/ /_  __/   _    |  
-\____/  \____//_/ /_/_____/ /_/      /_/|_|  
-                                             
-       Convolutional Audio Visualizer        
-                 Version 1.0                 
-          (c) 2022 Santiago Benoit           
+ _____    _   _    _____    _____    _____    _   _    _____    _____      _   
+/_____/  |_| |_|  |_____\  |____ /  |_____\  | \ |_|  /_ _ _\  \ ___ /    /_\  
+\_____\  |_|_|_|  |_____/  |____|   |_____/  |_|o|_|  |_|_|_|   \ _ /    /___\ 
+/_____/  \_____/  |_|      |_____\  |_____\  |_| \_|  \_____/    \_/    /_____\
+                                                                               
+                        Convolutional Audio Visualizer                         
+                                  Version 1.0                                  
+                           (c) 2022 Santiago Benoit                            
 """
 effects_help = """add effects to output video
     identity: no effect
     invert: invert colors
-    normalize: stretch contrast using top and bottom percentile
     sobel: apply Sobel filter for edge emphasis
     glow: glow effect using Sobel filter
     grayscale: convert colors to grayscale
     saturate: increase saturation
     desaturate: decrease saturation
+    normalize: stretch contrast using top and bottom percentile
     sblur: apply spacial blur
     mblur: apply motion blur
     hmirror: mirror horizontally
@@ -468,7 +467,7 @@ if __name__ == '__main__':
     if args.preview:
         dpi = mpl.rcParams['figure.dpi']
         figsize = (args.video_dims[0] / dpi, args.video_dims[1] / dpi)
-        fig = plt.figure("ConvFX", figsize=figsize)
+        fig = plt.figure("Supernova", figsize=figsize)
         ax = fig.add_axes([0, 0, 1, 1])
         ax.axis('off')
         imshow = ax.imshow(to_img(world), interpolation='none')
