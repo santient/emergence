@@ -11,7 +11,6 @@ import torch
 from torch.nn import Sequential, Linear, ReLU
 from torch.nn.init import normal_, xavier_normal_
 import torch.nn.functional as F
-# import tkinter as tk
 from PIL import Image
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -53,9 +52,6 @@ class Sobel(Effect):
         gx = (unfold * self.kx).sum(dim=(3, 4))
         gy = (unfold * self.ky).sum(dim=(3, 4))
         mag = torch.sqrt(gx.square() + gy.square())
-        # maxi = 2 * math.sqrt(20)
-        # quant = torch.quantile(mag, 0.99)
-        # return torch.clamp(mag / quant, 0, 1) * 2 - 1
         return mag / mag.max() * 2 - 1
 
 class Glow(Effect):
@@ -138,23 +134,9 @@ def apply_effects(world, effects):
         fx = effect.apply(fx)
     return fx
 
-# def circular_pad(arr, pad):
-#     padded = F.pad(arr, (pad, pad, pad, pad))
-#     padded[..., :pad, pad:-pad] = arr[..., -pad:, :]
-#     padded[..., -pad:, pad:-pad] = arr[..., :pad, :]
-#     padded[..., pad:-pad, :pad] = arr[..., :, -pad:]
-#     padded[..., pad:-pad, -pad:] = arr[..., :, :pad]
-#     padded[..., :pad, :pad] = arr[..., -pad:, -pad:]
-#     padded[..., :pad, -pad:] = arr[..., -pad:, :pad]
-#     padded[..., -pad:, :pad] = arr[..., :pad, -pad:]
-#     padded[..., -pad:, -pad:] = arr[..., :pad, :pad]
-#     return padded
-
 def get_filters(world, model):
     coords = 5 * torch.stack(torch.meshgrid(torch.linspace(-1, 1, world.size(1)), torch.linspace(-1, 1, world.size(2)), indexing='ij'), dim=-1).to(model.device)
     filters = model(coords)
-    # print(filters.var())
-    # filters = filters / filters.var(dim=2, keepdim=True)
     return filters
 
 def create_model(out_dim, device):
@@ -179,7 +161,6 @@ def audio_features(pcm, args):
     mel = librosa.feature.melspectrogram(y=h, sr=args.sr, n_mels=len(args.filter_sizes), hop_length=hop)
     db = librosa.power_to_db(mel, ref=np.max)
     features = np.concatenate((ons[np.newaxis, :], (db[::-1] + 80) / 80), axis=0)
-    # features = np.concatenate((np.zeros((features.shape[0], 1)), features), axis=1)
     features = features.transpose(1, 0).copy()
     return torch.from_numpy(features)
 
@@ -197,39 +178,22 @@ def step(world, model, delta, features, global_step, args):
         else:
             scale = 1
         end = start + 3 * 3 * size * size + 12
-        # scale = filters[:, :, start:start + 1]
-        # scale = 1
         fil = scale * filters[:, :, start:end - 12].view(world.size(1), world.size(2), 3, 3, size, size)
-        # if features is not None:
         bias = filters[:, :, end - 12:end - 9].view(world.size(1), world.size(2), 3)
         lin = scale * filters[:, :, end - 9:end].view(world.size(1), world.size(2), 3, 3)
-        # bias2 = filters[:, :, end - 3:end].view(world.size(1), world.size(2), 3)
         start = end
         pad = size // 2
         if pad > 0:
-            # padded = circular_pad(world_out, pad)
             padded = F.pad(world_out, (pad, pad, pad, pad), mode='reflect')
         else:
             padded = world_out
         unfold = padded.unfold(1, size, 1).unfold(2, size, 1)
         world_out = (fil.permute(2, 0, 1, 3, 4, 5) * unfold.unsqueeze(3)).sum(dim=(3, 4, 5))
-        # if features is not None:
         world_out = world_out + bias.permute(2, 0, 1)
         world_out = torch.relu(world_out)
         world_out = world_out + (lin.permute(2, 0, 1, 3) * world_out.unsqueeze(3)).sum(dim=3)
-            # world_out = world_out + bias2.permute(2, 0, 1)
-        # print(world_out.shape)
-        # result = torch.empty_like(world_out)
-        # for i in range(world_out.size(1)):
-        #     for j in range(world_out.size(2)):
-        #         # print(i, j)
-        #         result[:, i, j] = (fil[i, j].view(3, 3, size * size) @ padded[:, i:i + size, j:j + size].reshape(3, size * size, 1)).sum(dim=(1, 2))
-        # world_out = result
         if idx < len(args.filter_sizes) - 1:
-            # if features is not None:
             world_out = rgb_relu(world_out)
-            # else:
-            #     world_out = torch.relu(world_out)
     world_out = torch.tanh(world_out)
     if args.interval > 0 and global_step % args.interval == 0:
         delta.clear()
@@ -245,10 +209,7 @@ def to_img(world):
     img = (world + 1) / 2
     img = img * 255
     img = img.permute(1, 2, 0).cpu().numpy()
-    # img = img - img.min()
-    # img = img / img.max()
     img = np.round(img).astype("uint8")
-    # return img
     return Image.fromarray(img)
 
 def abort():
@@ -318,15 +279,6 @@ def get_args():
         help='preserve output directory after compiling video')
     return parser.parse_args()
 
-# dims = (720, 720)
-# sizes = (1, 3, 5, 7)
-# out_dim = sum(3 + 3 * 3 * size * size for size in sizes)
-# out_dir = 'out/'
-# sr = 22050
-# fr = 30
-# visualize = False
-# cleanup = False
-# interval = 1800
 version = "1.0"
 author = "Santiago Benoit"
 title = r"""
@@ -359,24 +311,6 @@ if __name__ == '__main__':
     torch.set_grad_enabled(False)
     print(title)
     args = get_args()
-    # if len(sys.argv) == 5:
-    #     if sys.argv[3] == '-s':
-    #         seed_str = sys.argv[4]
-    #         print("Seed string:", seed_str)
-    #         seed = int(hashlib.md5(seed_str.encode()).hexdigest()[-16:], 16)
-    #     elif sys.argv[3] == '-i':
-    #         seed = int(sys.argv[4])
-    #     else:
-    #         raise ValueError('Invalid arguments.')
-    #     print("Seed integer:", seed)
-    #     torch.manual_seed(seed)
-    # elif len(sys.argv) == 3:
-    #     seed = torch.seed()
-    #     print("Using random seed:", seed)
-    # else:
-    #     raise ValueError('Invalid arguments.')
-    # audio_file = sys.argv[1]
-    # out_file = sys.argv[2]
     if args.seed_str is not None:
         if args.seed_int is not None:
             raise ValueError('seed_str and seed_int both specified')
@@ -414,47 +348,6 @@ if __name__ == '__main__':
         features = audio_features(pcm, args).to(device)
         total_steps = features.size(0)
         del pcm
-    # filters = get_filters(world, model)
-    # coords = 100 * torch.stack(torch.meshgrid(torch.linspace(-1, 1, world.size(1)), torch.linspace(-1, 1, world.size(2)), indexing='ij'), dim=-1).cuda()
-    # with torch.no_grad():
-    #     filters = model(coords)
-    #     pca, _, _ = torch.pca_lowrank(filters.view(-1, out_dim), q=3, center=True)
-    #     pca = pca.view(world.size(1), world.size(2), 3).permute(2, 0, 1)
-    # if visualize:
-    #     global_step = 0
-    #     root = tk.Tk()
-    #     root.title("Emergence")
-    #     canvas = tk.Canvas(root, width=dims[0], height=dims[1])
-    #     canvas.pack()
-    #     running = True
-    #     def close():
-    #         global running
-    #         running = False
-    #     def update():
-    #         global world
-    #         global model
-    #         # global filters
-    #         global delta
-    #         global global_step
-    #         global canvas
-    #         global root
-    #         global running
-    #         while running:
-    #             time.sleep(1 / 60)
-    #             img = to_img(world)
-    #             img_tk = ImageTk.PhotoImage(img)
-    #             canvas.delete("all")
-    #             canvas.create_image(dims[0], dims[1], anchor="se", image=img_tk)
-    #             world = step(world, model, delta, global_step)
-    #             global_step += 1
-    #             root.update()
-    #         root.destroy()
-    #     root.after(0, update)
-    #     os.system('xset r off')
-    #     root.protocol("WM_DELETE_WINDOW", close)
-    #     root.mainloop()
-    #     os.system('xset r on')
-    # else:
     print("Rendering frames...")
     if os.path.isdir(args.out_dir):
         yn = input(f"Directory {args.out_dir} exists. Overwrite? (y/n) ")
@@ -473,7 +366,6 @@ if __name__ == '__main__':
         ax = fig.add_axes([0, 0, 1, 1])
         ax.axis('off')
         imshow = ax.imshow(to_img(world), interpolation='none')
-        # fig.tight_layout()
         fig.show()
     for global_step in tqdm.tqdm(range(total_steps)):
         world = step(world, model, delta, features, global_step, args)
