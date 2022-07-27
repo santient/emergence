@@ -21,7 +21,7 @@ import subprocess
 import warnings
 
 class Effect(ABC):
-    def __init__(self):
+    def __init__(self, args):
         self.buffer = None
     @abstractmethod
     def apply(self, world):
@@ -35,33 +35,42 @@ class Invert(Effect):
     def apply(self, world):
         return -world
 
+class Normalize(Effect):
+    def apply(self, world):
+        norm = (world + 1) / 2
+        bot = torch.quantile(norm, 0.01)
+        top = torch.quantile(norm, 0.99)
+        return torch.clamp((norm - bot) / (top - bot), 0, 1) * 2 - 1
+
 class Sobel(Effect):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, args):
+        super().__init__(args)
+        device = get_device(args.device)
         self.kx = torch.tensor([
             [1, 0, -1],
             [2, 0, -2],
-            [1, 0, -1]]).view(1, 1, 1, 3, 3)
+            [1, 0, -1]]).view(1, 1, 1, 3, 3).to(device)
         self.ky = torch.tensor([
             [1, 2, 1],
             [0, 0, 0],
-            [-1, -2, -1]]).view(1, 1, 1, 3, 3)
+            [-1, -2, -1]]).view(1, 1, 1, 3, 3).to(device)
     def apply(self, world):
         padded = F.pad((world + 1) / 2, (1, 1, 1, 1), mode='reflect')
         unfold = padded.unfold(1, 3, 1).unfold(2, 3, 1)
-        gx = (unfold * self.kx.to(unfold.device)).sum(dim=(3, 4))
-        gy = (unfold * self.ky.to(unfold.device)).sum(dim=(3, 4))
+        gx = (unfold * self.kx).sum(dim=(3, 4))
+        gy = (unfold * self.ky).sum(dim=(3, 4))
         mag = torch.sqrt(gx.square() + gy.square())
         # maxi = 2 * math.sqrt(20)
-        quant = torch.quantile(mag, 0.99)
-        return torch.clamp(mag / quant, 0, 1) * 2 - 1
+        # quant = torch.quantile(mag, 0.99)
+        # return torch.clamp(mag / quant, 0, 1) * 2 - 1
+        return mag / mag.max() * 2 - 1
 
 class Glow(Effect):
-    def __init__(self):
-        super().__init__()
-        self.sobel = Sobel()
+    def __init__(self, args):
+        super().__init__(args)
+        self.sobel = Sobel(args)
     def apply(self, world):
-        return 0.3 * world + 0.7 * self.sobel.apply(world)
+        return 0.5 * world + 0.5 * self.sobel.apply(world)
 
 class Grayscale(Effect):
     def apply(self, world):
@@ -69,9 +78,10 @@ class Grayscale(Effect):
 
 class Saturate(Effect):
     def apply(self, world):
-        maxi, _ = world.max(dim=0, keepdim=True)
-        mini, _ = world.min(dim=0, keepdim=True)
-        return (world - mini) / ((maxi + 1) / 2) * 2 - 1
+        sat = (world + 1) / 2
+        maxi, _ = sat.max(dim=0, keepdim=True)
+        mini, _ = sat.min(dim=0, keepdim=True)
+        return (sat - mini) / (maxi - mini) * 2 - 1
 
 class Desaturate(Effect):
     def apply(self, world):
@@ -85,11 +95,11 @@ class SBlur(Effect):
 
 class MBlur(Effect):
     def apply(self, world):
-        blur = world
+        avg = world
         if self.buffer is not None:
-            blur = (blur + self.buffer) / 2
+            avg = (avg + self.buffer) / 2
         self.buffer = world
-        return blur
+        return avg
 
 class HMirror(Effect):
     def apply(self, world):
@@ -102,6 +112,7 @@ class VMirror(Effect):
 effects_dict = {
     "identity": Identity,
     "invert": Invert,
+    "normalize": Normalize,
     "sobel": Sobel,
     "glow": Glow,
     "grayscale": Grayscale,
@@ -113,11 +124,11 @@ effects_dict = {
     "vmirror": VMirror,
 }
 
-def init_effects(effect_keys):
+def init_effects(effect_keys, args):
     effects = []
     if effect_keys is not None:
         for effect_key in effect_keys:
-            effect = effects_dict[effect_key]()
+            effect = effects_dict[effect_key](args)
             effects.append(effect)
     return effects
 
@@ -141,8 +152,7 @@ def apply_effects(world, effects):
 
 def get_filters(world, model):
     coords = 5 * torch.stack(torch.meshgrid(torch.linspace(-1, 1, world.size(1)), torch.linspace(-1, 1, world.size(2)), indexing='ij'), dim=-1).to(model.device)
-    with torch.no_grad():
-        filters = model(coords)
+    filters = model(coords)
     # print(filters.var())
     # filters = filters / filters.var(dim=2, keepdim=True)
     return filters
@@ -216,18 +226,19 @@ def step(world, model, delta, features, global_step, args):
         #         result[:, i, j] = (fil[i, j].view(3, 3, size * size) @ padded[:, i:i + size, j:j + size].reshape(3, size * size, 1)).sum(dim=(1, 2))
         # world_out = result
         if idx < len(args.filter_sizes) - 1:
-            world_out = rgb_relu(world_out)
+            if features is not None:
+                world_out = rgb_relu(world_out)
+            else:
+                world_out = torch.relu(world_out)
     world_out = torch.tanh(world_out)
     if args.interval > 0 and global_step % args.interval == 0:
         delta.clear()
         waypoint = create_model(model.out_dim, model.device)
         for p, w in zip(model.parameters(), waypoint.parameters()):
-            with torch.no_grad():
-                delta.append((w.data - p.data) / args.interval)
+            delta.append((w.data - p.data) / args.interval)
     if delta:
         for p, d in zip(model.parameters(), delta):
-            with torch.no_grad():
-                p.data = p.data + d
+            p.data = p.data + d
     return world_out
 
 def to_img(world):
@@ -243,6 +254,20 @@ def to_img(world):
 def abort():
     print("Aborted.")
     exit()
+
+def finish():
+    print("Done!")
+    exit()
+
+def get_device(name):
+    if name == 'auto':
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        else:
+            device = torch.device('cpu')
+    else:
+        device = torch.device(name)
+    return device
 
 class ArgumentParserWithDefaults(argparse.ArgumentParser):
     def add_argument(self, *args, help=None, default=None, **kwargs):
@@ -316,6 +341,7 @@ _  /    _  __ \_  __ \_ | / /_  /_   __    /
 effects_help = """add effects to output video
     identity: no effect
     invert: invert colors
+    normalize: stretch contrast using top and bottom percentile
     sobel: apply Sobel filter for edge emphasis
     glow: glow effect using Sobel filter
     grayscale: convert colors to grayscale
@@ -329,6 +355,7 @@ effects_help = """add effects to output video
 if __name__ == '__main__':
     warnings.filterwarnings('ignore')
     mpl.use('tkagg')
+    torch.set_grad_enabled(False)
     print(title)
     args = get_args()
     # if len(sys.argv) == 5:
@@ -363,13 +390,7 @@ if __name__ == '__main__':
         seed = torch.seed()
     print("Random seed:", seed)
     print("Initializing model...")
-    if args.device == 'auto':
-        if torch.cuda.is_available():
-            device = torch.device('cuda')
-        else:
-            device = torch.device('cpu')
-    else:
-        device = torch.device(args.device)
+    device = get_device(args.device)
     print("Using device", device.type)
     out_dim = sum(3 * 3 * size * size + 12 for size in args.filter_sizes)
     model = create_model(out_dim, device)
@@ -378,7 +399,7 @@ if __name__ == '__main__':
     else:
         world = torch.zeros(3, args.video_dims[1], args.video_dims[0]).to(device)
     delta = []
-    effects = init_effects(args.effects)
+    effects = init_effects(args.effects, args)
     if args.audio_file is None:
         print("No audio file specified. Using silent mode.")
         if args.video_length is None:
@@ -471,5 +492,4 @@ if __name__ == '__main__':
     if not args.preserve_out_dir:
         print("Cleaning up...")
         shutil.rmtree(args.out_dir)
-    print("Done!")
-    exit()
+    finish()
