@@ -12,6 +12,7 @@ from torch.nn import Sequential, Linear, ReLU
 from torch.nn.init import normal_, xavier_normal_
 import torch.nn.functional as F
 from PIL import Image
+from PIL.ImageQt import ImageQt
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import tqdm
@@ -230,6 +231,10 @@ def get_device(name):
         device = torch.device(name)
     return device
 
+def close_preview(event):
+    global preview_open
+    preview_open = False
+
 class ArgumentParserWithDefaults(argparse.ArgumentParser):
     def add_argument(self, *args, help=None, default=None, **kwargs):
         if help is not None:
@@ -306,8 +311,9 @@ effects_help = """add effects to output video
     vmirror: mirror vertically"""
 
 def main():
+    global preview_open
     warnings.filterwarnings("ignore")
-    mpl.use("tkagg")
+    mpl.use("TkCairo")
     torch.set_grad_enabled(False)
     print(title)
     args = get_args()
@@ -360,18 +366,22 @@ def main():
         os.mkdir(args.out_dir)
     digits = int(math.log10(total_steps)) + 1
     if args.preview:
+        fx = apply_effects(world, effects)
+        img = to_img(fx)
         dpi = mpl.rcParams["figure.dpi"]
         figsize = (args.video_dims[0] / dpi, args.video_dims[1] / dpi)
         fig = plt.figure("Supernova", figsize=figsize)
         ax = fig.add_axes([0, 0, 1, 1])
         ax.axis("off")
-        imshow = ax.imshow(to_img(world), interpolation="none")
+        imshow = ax.imshow(img, interpolation="none")
+        preview_open = True
+        fig.canvas.mpl_connect("close_event", close_preview)
         fig.show()
     for global_step in tqdm.tqdm(range(total_steps)):
         world = step(world, model, delta, features, global_step, args)
         fx = apply_effects(world, effects)
         img = to_img(fx)
-        if args.preview:
+        if args.preview and preview_open:
             imshow.set_data(img)
             fig.canvas.draw()
             fig.canvas.flush_events()
