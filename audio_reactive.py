@@ -35,13 +35,6 @@ class Invert(Effect):
     def apply(self, world):
         return -world
 
-class Normalize(Effect):
-    def apply(self, world):
-        norm = (world + 1) / 2
-        bot = torch.quantile(norm, 0.01)
-        top = torch.quantile(norm, 0.99)
-        return torch.clamp((norm - bot) / (top - bot), 0, 1) * 2 - 1
-
 class Sobel(Effect):
     def __init__(self, args):
         super().__init__(args)
@@ -87,6 +80,13 @@ class Desaturate(Effect):
     def apply(self, world):
         return world / 2
 
+class Normalize(Effect):
+    def apply(self, world):
+        norm = (world + 1) / 2
+        bot = torch.quantile(norm, 0.01)
+        top = torch.quantile(norm, 0.99)
+        return torch.clamp((norm - bot) / (top - bot), 0, 1) * 2 - 1
+
 class SBlur(Effect):
     def apply(self, world):
         padded = F.pad(world, (1, 1, 1, 1), mode='reflect')
@@ -112,12 +112,12 @@ class VMirror(Effect):
 effects_dict = {
     "identity": Identity,
     "invert": Invert,
-    "normalize": Normalize,
     "sobel": Sobel,
     "glow": Glow,
     "grayscale": Grayscale,
     "saturate": Saturate,
     "desaturate": Desaturate,
+    "normalize": Normalize,
     "sblur": SBlur,
     "mblur": MBlur,
     "hmirror": HMirror,
@@ -200,10 +200,10 @@ def step(world, model, delta, features, global_step, args):
         # scale = filters[:, :, start:start + 1]
         # scale = 1
         fil = scale * filters[:, :, start:end - 12].view(world.size(1), world.size(2), 3, 3, size, size)
-        if features is not None:
-            bias = filters[:, :, end - 12:end - 9].view(world.size(1), world.size(2), 3)
-            lin = scale * filters[:, :, end - 9:end].view(world.size(1), world.size(2), 3, 3)
-            # bias2 = filters[:, :, end - 3:end].view(world.size(1), world.size(2), 3)
+        # if features is not None:
+        bias = filters[:, :, end - 12:end - 9].view(world.size(1), world.size(2), 3)
+        lin = scale * filters[:, :, end - 9:end].view(world.size(1), world.size(2), 3, 3)
+        # bias2 = filters[:, :, end - 3:end].view(world.size(1), world.size(2), 3)
         start = end
         pad = size // 2
         if pad > 0:
@@ -213,10 +213,10 @@ def step(world, model, delta, features, global_step, args):
             padded = world_out
         unfold = padded.unfold(1, size, 1).unfold(2, size, 1)
         world_out = (fil.permute(2, 0, 1, 3, 4, 5) * unfold.unsqueeze(3)).sum(dim=(3, 4, 5))
-        if features is not None:
-            world_out = world_out + bias.permute(2, 0, 1)
-            world_out = torch.relu(world_out)
-            world_out = world_out + (lin.permute(2, 0, 1, 3) * world_out.unsqueeze(3)).sum(dim=3)
+        # if features is not None:
+        world_out = world_out + bias.permute(2, 0, 1)
+        world_out = torch.relu(world_out)
+        world_out = world_out + (lin.permute(2, 0, 1, 3) * world_out.unsqueeze(3)).sum(dim=3)
             # world_out = world_out + bias2.permute(2, 0, 1)
         # print(world_out.shape)
         # result = torch.empty_like(world_out)
@@ -226,10 +226,10 @@ def step(world, model, delta, features, global_step, args):
         #         result[:, i, j] = (fil[i, j].view(3, 3, size * size) @ padded[:, i:i + size, j:j + size].reshape(3, size * size, 1)).sum(dim=(1, 2))
         # world_out = result
         if idx < len(args.filter_sizes) - 1:
-            if features is not None:
-                world_out = rgb_relu(world_out)
-            else:
-                world_out = torch.relu(world_out)
+            # if features is not None:
+            world_out = rgb_relu(world_out)
+            # else:
+            #     world_out = torch.relu(world_out)
     world_out = torch.tanh(world_out)
     if args.interval > 0 and global_step % args.interval == 0:
         delta.clear()
@@ -310,6 +310,8 @@ def get_args():
         help=effects_help)
     parser.add_argument('--device', type=str, metavar='D', default='auto',
         help='device used for heavy computations, e.g. cpu or cuda')
+    parser.add_argument('--rand_init', action='store_true',
+        help='initialize world from random noise')
     parser.add_argument('--preview', action='store_true',
         help='preview video while rendering')
     parser.add_argument('--preserve_out_dir', action='store_true',
@@ -341,7 +343,7 @@ effects_help = """add effects to output video
     identity: no effect
     invert: invert colors
     sobel: apply Sobel filter for edge emphasis
-    glow: glow effect using Sobel filter
+    glow: apply glow effect using Sobel filter overlay
     grayscale: convert colors to grayscale
     saturate: increase saturation
     desaturate: decrease saturation
@@ -393,7 +395,7 @@ if __name__ == '__main__':
     print("Using device", device.type)
     out_dim = sum(3 * 3 * size * size + 12 for size in args.filter_sizes)
     model = create_model(out_dim, device)
-    if args.audio_file is None:
+    if args.rand_init:
         world = torch.rand(3, args.video_dims[1], args.video_dims[0]).to(device) * 2 - 1
     else:
         world = torch.zeros(3, args.video_dims[1], args.video_dims[0]).to(device)
