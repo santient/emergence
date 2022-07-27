@@ -47,7 +47,7 @@ class Sobel(Effect):
             [0, 0, 0],
             [-1, -2, -1]]).view(1, 1, 1, 3, 3).to(device)
     def apply(self, world):
-        padded = F.pad((world + 1) / 2, (1, 1, 1, 1), mode='reflect')
+        padded = F.pad((world + 1) / 2, (1, 1, 1, 1), mode="reflect")
         unfold = padded.unfold(1, 3, 1).unfold(2, 3, 1)
         gx = (unfold * self.kx).sum(dim=(3, 4))
         gy = (unfold * self.ky).sum(dim=(3, 4))
@@ -85,7 +85,7 @@ class Normalize(Effect):
 
 class SBlur(Effect):
     def apply(self, world):
-        padded = F.pad(world, (1, 1, 1, 1), mode='reflect')
+        padded = F.pad(world, (1, 1, 1, 1), mode="reflect")
         unfold = padded.unfold(1, 3, 1).unfold(2, 3, 1)
         return unfold.mean(dim=(3, 4))
 
@@ -135,7 +135,7 @@ def apply_effects(world, effects):
     return fx
 
 def get_filters(world, model):
-    coords = 5 * torch.stack(torch.meshgrid(torch.linspace(-1, 1, world.size(1)), torch.linspace(-1, 1, world.size(2)), indexing='ij'), dim=-1).to(model.device)
+    coords = 5 * torch.stack(torch.meshgrid(torch.linspace(-1, 1, world.size(1)), torch.linspace(-1, 1, world.size(2)), indexing="ij"), dim=-1).to(model.device)
     filters = model(coords)
     return filters
 
@@ -184,7 +184,7 @@ def step(world, model, delta, features, global_step, args):
         start = end
         pad = size // 2
         if pad > 0:
-            padded = F.pad(world_out, (pad, pad, pad, pad), mode='reflect')
+            padded = F.pad(world_out, (pad, pad, pad, pad), mode="reflect")
         else:
             padded = world_out
         unfold = padded.unfold(1, size, 1).unfold(2, size, 1)
@@ -221,11 +221,11 @@ def finish():
     exit()
 
 def get_device(name):
-    if name == 'auto':
+    if name == "auto":
         if torch.cuda.is_available():
-            device = torch.device('cuda')
+            device = torch.device("cuda")
         else:
-            device = torch.device('cpu')
+            device = torch.device("cpu")
     else:
         device = torch.device(name)
     return device
@@ -233,50 +233,50 @@ def get_device(name):
 class ArgumentParserWithDefaults(argparse.ArgumentParser):
     def add_argument(self, *args, help=None, default=None, **kwargs):
         if help is not None:
-            kwargs['help'] = help
-        if default is not None and args[0] != '-h':
-            kwargs['default'] = default
+            kwargs["help"] = help
+        if default is not None and args[0] != "-h":
+            kwargs["default"] = default
             if help is not None:
-                kwargs['help'] += f' [default: {default}]'
+                kwargs["help"] += f" [default: {default}]"
         super().add_argument(*args, **kwargs)
 
 def get_args():
     parser = ArgumentParserWithDefaults(
         formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=30))
-    parser.add_argument('--out_file', type=str, required=True, metavar='F',
-        help='output video file path')
-    parser.add_argument('--audio_file', type=str, metavar='F',
-        help='input audio file path')
-    parser.add_argument('--out_dir', type=str, default='./out', metavar='D',
-        help='output directory for video frames')
-    parser.add_argument('--seed_str', type=str, metavar='S',
-        help='seed string (hashed into 64-bit integer)')
-    parser.add_argument('--seed_int', type=int, metavar='I',
-        help='64-bit seed integer')
-    parser.add_argument('--video_dims', type=int, nargs=2, default=(720, 720), metavar=('W', 'H'),
-        help='output video dimensions')
-    parser.add_argument('--video_length', type=int, metavar='L',
-        help='manually specify video length in frames')
-    parser.add_argument('--filter_sizes', type=int, nargs='+', default=(3, 5, 7), metavar='S',
-        help='convolutional filter sizes')
-    parser.add_argument('--fr', type=int, default=30,
-        help='video frame rate')
-    parser.add_argument('--sr', type=int, default=22050,
-        help='audio sample rate')
-    parser.add_argument('--sensitivity', type=float, default=1.0, metavar='S',
-        help='audio reactive sensitivity')
-    parser.add_argument('--interval', type=int, default=1800, metavar='I',
-        help='evolution interval for model weights (0 for no evolution)')
-    parser.add_argument('--effects', type=str, nargs='*', metavar='E',
+    parser.add_argument("--out_file", type=str, required=True, metavar="F",
+        help="output video file path")
+    parser.add_argument("--audio_file", type=str, metavar="F",
+        help="input audio file path")
+    parser.add_argument("--out_dir", type=str, default="./out", metavar="D",
+        help="output directory for video frames")
+    parser.add_argument("--seed_str", type=str, metavar="S",
+        help="seed string (hashed into 64-bit integer)")
+    parser.add_argument("--seed_int", type=int, metavar="I",
+        help="64-bit seed integer")
+    parser.add_argument("--video_dims", type=int, nargs=2, default=(720, 720), metavar=("W", "H"),
+        help="output video dimensions")
+    parser.add_argument("--video_length", type=int, metavar="L",
+        help="manually specify video length in frames")
+    parser.add_argument("--filter_sizes", type=int, nargs="+", default=(3, 5, 7), metavar="S",
+        help="convolutional filter sizes")
+    parser.add_argument("--fr", type=int, default=30,
+        help="video frame rate")
+    parser.add_argument("--sr", type=int, default=22050,
+        help="audio sample rate")
+    parser.add_argument("--sensitivity", type=float, default=1.0, metavar="S",
+        help="audio reactive sensitivity")
+    parser.add_argument("--interval", type=int, default=1800, metavar="I",
+        help="evolution interval for model weights (0 for no evolution)")
+    parser.add_argument("--effects", type=str, nargs="*", metavar="E",
         help=effects_help)
-    parser.add_argument('--device', type=str, metavar='D', default='auto',
-        help='device used for heavy computations, e.g. cpu or cuda')
-    parser.add_argument('--rand_init', action='store_true',
-        help='initialize world from random noise')
-    parser.add_argument('--preview', action='store_true',
-        help='preview video while rendering')
-    parser.add_argument('--preserve_out_dir', action='store_true',
-        help='preserve output directory after compiling video')
+    parser.add_argument("--device", type=str, metavar="D", default="auto",
+        help="device used for heavy computations, e.g. cpu or cuda")
+    parser.add_argument("--rand_init", action="store_true",
+        help="initialize world from random noise")
+    parser.add_argument("--preview", action="store_true",
+        help="preview video while rendering")
+    parser.add_argument("--preserve_out_dir", action="store_true",
+        help="preserve output directory after compiling video")
     return parser.parse_args()
 
 version = "1.0"
@@ -305,15 +305,15 @@ effects_help = """add effects to output video
     hmirror: mirror horizontally
     vmirror: mirror vertically"""
 
-if __name__ == '__main__':
-    warnings.filterwarnings('ignore')
-    mpl.use('tkagg')
+if __name__ == "__main__":
+    warnings.filterwarnings("ignore")
+    mpl.use("tkagg")
     torch.set_grad_enabled(False)
     print(title)
     args = get_args()
     if args.seed_str is not None:
         if args.seed_int is not None:
-            raise ValueError('seed_str and seed_int both specified')
+            raise ValueError("seed_str and seed_int both specified")
         else:
             print("Seed string:", args.seed_str)
             seed = int(hashlib.md5(seed_str.encode()).hexdigest()[-16:], 16)
@@ -351,7 +351,7 @@ if __name__ == '__main__':
     print("Rendering frames...")
     if os.path.isdir(args.out_dir):
         yn = input(f"Directory {args.out_dir} exists. Overwrite? (y/n) ")
-        if yn.lower() == 'y':
+        if yn.lower() == "y":
             shutil.rmtree(args.out_dir)
             os.mkdir(args.out_dir)
         else:
@@ -360,12 +360,12 @@ if __name__ == '__main__':
         os.mkdir(args.out_dir)
     digits = int(math.log10(total_steps)) + 1
     if args.preview:
-        dpi = mpl.rcParams['figure.dpi']
+        dpi = mpl.rcParams["figure.dpi"]
         figsize = (args.video_dims[0] / dpi, args.video_dims[1] / dpi)
         fig = plt.figure("Supernova", figsize=figsize)
         ax = fig.add_axes([0, 0, 1, 1])
-        ax.axis('off')
-        imshow = ax.imshow(to_img(world), interpolation='none')
+        ax.axis("off")
+        imshow = ax.imshow(to_img(world), interpolation="none")
         fig.show()
     for global_step in tqdm.tqdm(range(total_steps)):
         world = step(world, model, delta, features, global_step, args)
@@ -375,12 +375,12 @@ if __name__ == '__main__':
             imshow.set_data(img)
             fig.canvas.draw()
             fig.canvas.flush_events()
-        img.save(os.path.join(args.out_dir, f'frame_{str(global_step).zfill(digits)}.png'))
+        img.save(os.path.join(args.out_dir, f"frame_{str(global_step).zfill(digits)}.png"))
     print("Compiling video...")
     if args.audio_file is None:
-        cmd = ['ffmpeg', '-framerate', str(args.fr), '-i', os.path.join(args.out_dir, f'frame_%0{digits}d.png'), '-c:v', 'libx265', '-x265-params', 'lossless=1', args.out_file]
+        cmd = ["ffmpeg", "-framerate", str(args.fr), "-i", os.path.join(args.out_dir, f"frame_%0{digits}d.png"), "-c:v", "libx265", "-x265-params", "lossless=1", args.out_file]
     else:
-        cmd = ['ffmpeg', '-framerate', str(args.fr), '-i', os.path.join(args.out_dir, f'frame_%0{digits}d.png'), '-i', args.audio_file, '-map', '0:v', '-map', '1:a',  '-c:v', 'libx265', '-x265-params', 'lossless=1', '-c:a', 'copy', '-shortest', args.out_file]
+        cmd = ["ffmpeg", "-framerate", str(args.fr), "-i", os.path.join(args.out_dir, f"frame_%0{digits}d.png"), "-i", args.audio_file, "-map", "0:v", "-map", "1:a",  "-c:v", "libx265", "-x265-params", "lossless=1", "-c:a", "copy", "-shortest", args.out_file]
     subprocess.run(cmd, check=True)
     if not args.preserve_out_dir:
         print("Cleaning up...")
