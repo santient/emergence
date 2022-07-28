@@ -248,12 +248,12 @@ class ArgumentParserWithDefaults(argparse.ArgumentParser):
 def get_args():
     parser = ArgumentParserWithDefaults(
         formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=30))
-    parser.add_argument("--out_file", type=str, required=True, metavar="F",
-        help="output video file path")
     parser.add_argument("--audio_file", type=str, metavar="F",
         help="input audio file path")
+    parser.add_argument("--out_file", type=str, required=True, metavar="F",
+        help="output video file path")
     parser.add_argument("--out_dir", type=str, default="./out", metavar="D",
-        help="output directory for video frames")
+        help="output png directory for video frames")
     parser.add_argument("--seed_str", type=str, metavar="S",
         help="seed string (hashed into 64-bit integer)")
     parser.add_argument("--seed_int", type=int, metavar="I",
@@ -279,9 +279,9 @@ def get_args():
     parser.add_argument("--rand_init", action="store_true",
         help="initialize world from random noise")
     parser.add_argument("--no_preview", action="store_true",
-        help="don\'t preview video while rendering")
+        help="disable video preview while rendering")
     parser.add_argument("--preserve_out_dir", action="store_true",
-        help="preserve output directory after compiling video")
+        help="preserve output png directory after compiling video")
     return parser.parse_args()
 
 version = "1.0"
