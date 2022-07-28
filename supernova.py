@@ -181,7 +181,7 @@ def step(world, model, delta, features, global_step, args):
         end = start + 3 * 3 * size * size + 12
         fil = scale * filters[:, :, start:end - 12].view(world.size(1), world.size(2), 3, 3, size, size)
         bias = filters[:, :, end - 12:end - 9].view(world.size(1), world.size(2), 3)
-        lin = scale * filters[:, :, end - 9:end].view(world.size(1), world.size(2), 3, 3)
+        lin = (scale / 2) * filters[:, :, end - 9:end].view(world.size(1), world.size(2), 3, 3)
         start = end
         pad = size // 2
         if pad > 0:
@@ -278,8 +278,8 @@ def get_args():
         help="device used for heavy computations, e.g. cpu or cuda")
     parser.add_argument("--rand_init", action="store_true",
         help="initialize world from random noise")
-    parser.add_argument("--preview", action="store_true",
-        help="preview video while rendering")
+    parser.add_argument("--no_preview", action="store_true",
+        help="don\'t preview video while rendering")
     parser.add_argument("--preserve_out_dir", action="store_true",
         help="preserve output directory after compiling video")
     return parser.parse_args()
@@ -317,6 +317,7 @@ def main():
     torch.set_grad_enabled(False)
     print(title)
     args = get_args()
+    preview = not args.no_preview
     if args.seed_str is not None:
         if args.seed_int is not None:
             raise ValueError("seed_str and seed_int both specified")
@@ -365,7 +366,7 @@ def main():
     else:
         os.mkdir(args.out_dir)
     digits = int(math.log10(total_steps)) + 1
-    if args.preview:
+    if preview:
         fx = apply_effects(world, effects)
         img = to_img(fx)
         dpi = mpl.rcParams["figure.dpi"]
@@ -381,11 +382,13 @@ def main():
         world = step(world, model, delta, features, global_step, args)
         fx = apply_effects(world, effects)
         img = to_img(fx)
-        if args.preview and preview_open:
+        if preview and preview_open:
             imshow.set_data(img)
             fig.canvas.draw()
             fig.canvas.flush_events()
         img.save(os.path.join(args.out_dir, f"frame_{str(global_step).zfill(digits)}.png"))
+    if preview and preview_open:
+        fig.close()
     print("Compiling video...")
     if args.audio_file is None:
         cmd = ["ffmpeg", "-framerate", str(args.fr), "-i", os.path.join(args.out_dir, f"frame_%0{digits}d.png"), "-c:v", "libx265", "-x265-params", "lossless=1", args.out_file]
